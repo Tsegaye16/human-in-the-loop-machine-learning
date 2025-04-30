@@ -346,8 +346,6 @@ The Flask-based web interface (`feedback.html`) is tightly integrated with the b
 - **UI Enhancements**: Add a button to display `learning_curve.png` in the UI by serving it via Flask’s `static` route.
 - **Error Handling**: The README mentions robust error handling, which you can demo by submitting invalid feedback (e.g., empty label) and showing the error response.
 
-If you need specific slide content, a sample `spam.csv`, or further assistance with the demo setup, let me know immediately! Good luck with your presentation!
-
 ```
 
 ```
