@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spam Classification Feedback</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .sample-container {
+        border: 1px solid #ddd;
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+      .confidence {
+        margin: 10px 0;
+      }
+      .controls button {
+        margin-right: 10px;
+        padding: 5px 15px;
+      }
+      .progress {
+        margin-top: 20px;
+      }
+      .chart-container {
+        margin-top: 30px;
+      }
+      .accuracy {
+        margin-top: 20px;
+      }
+      .report {
+        margin-top: 20px;
+        display: none;
+      }
+      .error {
+        color: red;
+        margin-top: 10px;
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <h1>Spam Classification Feedback</h1>
+    <div class="sample-container">
+      <h3>Sample Text:</h3>
+      <p id="sample-text"></p>
+      <div class="confidence">
+        <strong>Model Prediction:</strong> <span id="model-prediction"></span>
+        <br />
+        <strong>Confidence:</strong> <span id="model-confidence"></span>%
+      </div>
+      <div class="controls">
+        <p>Is this classification correct?</p>
+        <button onclick="submitFeedback(0)">Ham (Correct)</button>
+        <button onclick="submitFeedback(1)">Spam (Correct)</button>
+        <button onclick="submitFeedback(-1)">Skip</button>
+      </div>
+    </div>
+
+    <div class="progress">
+      <h3>Progress</h3>
+      <p>Feedback provided: <span id="feedback-count">0</span></p>
+    </div>
+
+    <div class="accuracy">
+      <h3>Model Accuracy</h3>
+      <p>HITL Model: <span id="hitl-accuracy">0.00</span>%</p>
+      <p>Traditional Model: <span id="traditional-accuracy">0.00</span>%</p>
+    </div>
+
+    <div class="chart-container">
+      <canvas id="performanceChart"></canvas>
+    </div>
+
+    <div class="report">
+      <h3>Comparison Report</h3>
+      <button onclick="fetchReport()">View Report</button>
+      <pre id="report-content"></pre>
+      <img
+        id="learning-curve"
+        src=""
+        alt="Learning Curve"
+        style="max-width: 100%; display: none"
+      />
+    </div>
+
+    <div class="error" id="error-message"></div>
+
+    <script>
+      let currentSample = null;
+      const feedbackCountElement = document.getElementById("feedback-count");
+      const errorMessageElement = document.getElementById("error-message");
+      let feedbackCount = 0;
+      let performanceChart = null;
+
+      // Initialize Chart
+      function initChart() {
+        const ctx = document
+          .getElementById("performanceChart")
+          .getContext("2d");
+        performanceChart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: [],
+            datasets: [
+              {
+                label: "HITL Model Accuracy",
+                data: [],
+                borderColor: "rgb(75, 192, 192)",
+                backgroundColor: "rgba(75, 192, 192, 0.2)",
+                tension: 0.1,
+                fill: true,
+              },
+              {
+                label: "Traditional Model Accuracy",
+                data: [],
+                borderColor: "rgb(255, 99, 132)",
+                backgroundColor: "rgba(255, 99, 132, 0.2)",
+                tension: 0.1,
+                fill: true,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 1.0,
+                title: {
+                  display: true,
+                  text: "Accuracy",
+                },
+              },
+              x: {
+                title: {
+                  display: true,
+                  text: "Feedback Samples",
+                },
+              },
+            },
+          },
+        });
+      }
+
+      // Update chart with new data
+      function updateChart(data) {
+        console.log("Updating chart with data:", data);
+        if (!data.iterations || !data.hitl || !data.traditional) {
+          console.error("Invalid performance data:", data);
+          errorMessageElement.textContent =
+            "Error: Invalid performance data received";
+          return;
+        }
+        performanceChart.data.labels = data.iterations;
+        performanceChart.data.datasets[0].data = data.hitl;
+        performanceChart.data.datasets[1].data = data.traditional;
+        performanceChart.update();
+
+        // Update accuracy display
+        const hitlAccuracy = (data.hitl[data.hitl.length - 1] * 100).toFixed(2);
+        const traditionalAccuracy = (
+          data.traditional[data.traditional.length - 1] * 100
+        ).toFixed(2);
+        document.getElementById("hitl-accuracy").textContent = hitlAccuracy;
+        document.getElementById("traditional-accuracy").textContent =
+          traditionalAccuracy;
+      }
+
+      // Fetch performance data with retry
+      function getPerformanceData(retryCount = 0) {
+        const maxRetries = 3;
+        fetch("/get_performance")
+          .then((response) => {
+            if (!response.ok)
+              throw new Error(`HTTP error! status: ${response.status}`);
+            return response.json();
+          })
+          .then((data) => {
+            updateChart(data);
+            errorMessageElement.textContent = "";
+          })
+          .catch((error) => {
+            console.error(
+              `Error fetching performance data (attempt ${retryCount + 1}):`,
+              error
+            );
+            if (retryCount < maxRetries) {
+              console.log(`Retrying... (${retryCount + 1}/${maxRetries})`);
+              setTimeout(() => getPerformanceData(retryCount + 1), 1000);
+            } else {
+              errorMessageElement.textContent = `Error updating performance data: ${error.message}`;
+            }
+          });
+      }
+
+      // Fetch a new sample from the server
+      function getNewSample() {
+        fetch("/get_sample")
+          .then((response) => {
+            if (!response.ok)
+              throw new Error(`HTTP error! status: ${response.status}`);
+            return response.json();
+          })
+          .then((data) => {
+            if (data.error) {
+              throw new Error(data.error);
+            }
+            currentSample = data;
+            document.getElementById("sample-text").textContent = data.text;
+            document.getElementById("model-prediction").textContent =
+              data.model_prediction === 0 ? "Ham" : "Spam";
+            document.getElementById("model-confidence").textContent = (
+              data.model_confidence * 100
+            ).toFixed(2);
+            errorMessageElement.textContent = "";
+          })
+          .catch((error) => {
+            console.error("Error fetching sample:", error);
+            errorMessageElement.textContent = `Error fetching sample: ${error.message}`;
+          });
+      }
+
+      // Submit feedback to the server
+      function submitFeedback(label) {
+        if (label === -1) {
+          getNewSample();
+          return;
+        }
+
+        const correctedLabel = label;
+        fetch("/submit_feedback", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            pool_idx: currentSample.pool_idx,
+            text: currentSample.text,
+            model_prediction: currentSample.model_prediction,
+            model_confidence: currentSample.model_confidence,
+            corrected_label: correctedLabel,
+          }),
+        })
+          .then((response) => {
+            if (!response.ok)
+              throw new Error(`HTTP error! status: ${response.status}`);
+            return response.json();
+          })
+          .then((data) => {
+            if (data.error) {
+              throw new Error(data.error);
+            }
+            if (data.status === "success") {
+              feedbackCount++;
+              feedbackCountElement.textContent = feedbackCount;
+              getPerformanceData();
+              getNewSample();
+              errorMessageElement.textContent = "";
+            }
+          })
+          .catch((error) => {
+            console.error("Error submitting feedback:", error);
+            errorMessageElement.textContent = `Error submitting feedback: ${error.message}`;
+          });
+      }
+
+      // Fetch and display report
+      function fetchReport() {
+        fetch("/get_report")
+          .then((response) => {
+            if (!response.ok)
+              throw new Error(`HTTP error! status: ${response.status}`);
+            return response.json();
+          })
+          .then((data) => {
+            document.getElementById("report-content").textContent =
+              JSON.stringify(data.report, null, 2);
+            document.getElementById("learning-curve").src =
+              "/static/learning_curve.png?" + new Date().getTime();
+            document.getElementById("learning-curve").style.display = "block";
+            document.querySelector(".report").style.display = "block";
+            errorMessageElement.textContent = "";
+          })
+          .catch((error) => {
+            console.error("Error fetching report:", error);
+            errorMessageElement.textContent = `Error fetching report: ${error.message}`;
+          });
+      }
+
+      // Initialize
+      initChart();
+      getPerformanceData();
+      getNewSample();
+    </script>
+  </body>
+</html>

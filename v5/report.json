@@ -1,0 +1,9 @@
+{
+  "final_hitl_accuracy": 0.874409820585458,
+  "final_traditional_accuracy": 0.8659112370160529,
+  "improvement": 0.008498583569405138,
+  "feedback_samples": 9,
+  "test_set_size": 1059,
+  "dataset_size": 5572,
+  "note": "Both models evaluated on the same test dataset with 100 total entries, HITL retrained per feedback"
+}
